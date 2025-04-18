@@ -1114,7 +1114,17 @@ static void stream_tx_xfer_submit(usb_transfer_t *out_xfer)
         data_len = iface->packet_size * iface->packet_num;
         size_t actual_num_bytes = 0;
         _ring_buffer_pop(iface->ringbuf, out_xfer->data_buffer, data_len, &actual_num_bytes, 0);
-        assert(actual_num_bytes == data_len);
+        
+        // Instead of asserting, handle the case where we got fewer bytes than requested
+        if (actual_num_bytes < data_len) {
+            // Fill the remaining buffer with zeros to avoid sending garbage
+            memset(out_xfer->data_buffer + actual_num_bytes, 0, data_len - actual_num_bytes);
+            ESP_LOGW(TAG, "TX buffer underrun: requested %zu bytes, got %zu", data_len, actual_num_bytes);
+        }
+        
+        // Set the actual number of bytes to transfer
+        out_xfer->num_bytes = actual_num_bytes;
+        
         // Relaunch transfer, as the pipe state may change
         // the transfer may fail eg. the device is disconnected or the pipe is suspended
         // the data in ringbuffer will be dropped without notify user
